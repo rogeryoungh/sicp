@@ -104,7 +104,7 @@ h1.titlefont {
    made redundant by table of contents */
 h1.node-heading, 
 h1.node-heading + table.menu, 
-a[name="Top"] + nav.header {
+a[name="Top"] + div.header {
   display: none; 
 }
 
@@ -224,7 +224,7 @@ a[href]:-webkit-any-link > sup {
   top: -1.0ex;
 }
 
-nav.header p {
+div.header p {
   font-family: "Linux Biolinum O", sans-serif; 
   font-size: 0.9rem;
   padding: 0.5em;
@@ -232,12 +232,12 @@ nav.header p {
   background-color: #f0f0f0;
 }
 
-nav.header a[href] {
+div.header a[href] {
   margin: -1.5ex;
   padding: 1.5ex;
 }
 
-nav.header:last-of-type {
+div.header:last-of-type {
   margin-top: 2em;
 }
 

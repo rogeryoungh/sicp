@@ -1,0 +1,2167 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!-- Created by GNU Texinfo 6.7, http://www.gnu.org/software/texinfo/ -->
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>4.1 (Structure and Interpretation of Computer Programs, 2e)</title>
+
+<meta name="description" content="4.1 (Structure and Interpretation of Computer Programs, 2e)">
+<meta name="keywords" content="4.1 (Structure and Interpretation of Computer Programs, 2e)">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+<meta name="Generator" content="texi2any">
+<link href="index.html" rel="start" title="Top">
+<link href="Term-Index.html" rel="index" title="Term Index">
+<link href="index.html#SEC_Contents" rel="contents" title="Table of Contents">
+<link href="Chapter-4.html" rel="up" title="Chapter 4">
+<link href="4_002e2.html#g_t4_002e2" rel="next" title="4.2">
+<link href="Chapter-4.html" rel="prev" title="Chapter 4">
+<style type="text/css">
+<!--
+a.summary-letter {text-decoration: none}
+blockquote.indentedblock {margin-right: 0em}
+div.display {margin-left: 3.2em}
+div.example {margin-left: 3.2em}
+div.lisp {margin-left: 3.2em}
+kbd {font-style: oblique}
+pre.display {font-family: inherit}
+pre.format {font-family: inherit}
+pre.menu-comment {font-family: serif}
+pre.menu-preformatted {font-family: serif}
+span.nolinebreak {white-space: nowrap}
+span.roman {font-family: initial; font-weight: normal}
+span.sansserif {font-family: sans-serif; font-weight: normal}
+ul.no-bullet {list-style: none}
+-->
+</style>
+
+<link href="css/style.css" rel="stylesheet" type="text/css" />
+<link href="css/prettify.css" rel="stylesheet" type="text/css" />
+
+<script class="prettifier" src="js/highlight/prettify.js" type="text/javascript"></script>
+<script class="prettifier" src="js/highlight/lang-lisp.js" type="text/javascript"></script>
+
+<script src="js/jquery.min.js" type="text/javascript"></script>
+<script src="js/footnotes.js" type="text/javascript"></script>
+<script src="js/browsertest.js" type="text/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-svg.js" type="text/javascript"></script>
+</head>
+
+<body lang="en">
+<section><span class="top jump" title="Jump to top"><a href="#pagetop" accesskey="t">&#8673;</a></span><a id="pagetop"></a><span id="g_t4_002e1"></span><div class="header">
+<p>
+Next: <a href="4_002e2.html#g_t4_002e2" accesskey="n" rel="next">4.2</a>, Previous: <a href="Chapter-4.html" accesskey="p" rel="prev">Chapter 4</a>, Up: <a href="Chapter-4.html" accesskey="u" rel="up">Chapter 4</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Term-Index.html" title="Index" rel="index">Index</a>]</p>
+</div>
+<span id="The-Metacircular-Evaluator"></span><h3 class="section"><span class="secnum">4.1</span><span class="sectitle">The Metacircular Evaluator</span></h3>
+
+<p>Our evaluator for Lisp will be implemented as a Lisp program.  It may seem
+circular to think about evaluating Lisp programs using an evaluator that is
+itself implemented in Lisp.  However, evaluation is a process, so it is
+appropriate to describe the evaluation process using Lisp, which, after all, is
+our tool for describing processes.<a class="footnote_link" id="DOCF207" href="#FOOT207"><sup>207</sup></a>
+An evaluator that is written in the same language that it evaluates is said to
+be <span id="index-metacircular"></span>
+<em>metacircular</em>.
+</p>
+<p>The metacircular evaluator is essentially a Scheme formulation of the
+environment model of evaluation described in <a href="3_002e2.html#g_t3_002e2">3.2</a>.  Recall that
+the model has two basic parts:
+</p>
+<ol>
+<li> To evaluate a combination (a compound expression other than a special form),
+evaluate the subexpressions and then apply the value of the operator
+subexpression to the values of the operand subexpressions.
+
+</li><li> To apply a compound procedure to a set of arguments, evaluate the body of the
+procedure in a new environment.  To construct this environment, extend the
+environment part of the procedure object by a frame in which the formal
+parameters of the procedure are bound to the arguments to which the procedure
+is applied.
+
+</li></ol>
+
+<p>These two rules describe the essence of the evaluation process, a basic cycle
+in which expressions to be evaluated in environments are reduced to procedures
+to be applied to arguments, which in turn are reduced to new expressions to be
+evaluated in new environments, and so on, until we get down to symbols, whose
+values are looked up in the environment, and to primitive procedures, which are
+applied directly (see <a href="#Figure-4_002e1">Figure 4.1</a>).<a class="footnote_link" id="DOCF208" href="#FOOT208"><sup>208</sup></a> 
+This evaluation cycle will be embodied by the interplay between the two
+critical procedures in the evaluator, <code>eval</code> and <code>apply</code>, which are
+described in <a href="#g_t4_002e1_002e1">4.1.1</a> (see <a href="#Figure-4_002e1">Figure 4.1</a>).
+</p>
+<div class="float">
+<span id="Figure-4_002e1"></span><img src="fig/chap4/Fig4.1a.std.svg" alt="fig/chap4/Fig4.1a">
+
+<div class="float-caption"><p><strong>Figure 4.1:</strong> The <code>eval</code>-<code>apply</code> cycle exposes the essence of a computer language.</p></div></div>
+<p>The implementation of the evaluator will depend upon procedures that define the
+<span id="index-syntax"></span>
+<em>syntax</em> of the expressions to be evaluated.  We will use data
+abstraction to make the evaluator independent of the representation of the
+language.  For example, rather than committing to a choice that an assignment
+is to be represented by a list beginning with the symbol <code>set!</code> we use an
+abstract predicate <code>assignment?</code> to test for an assignment, and we use
+abstract selectors <code>assignment-variable</code> and <code>assignment-value</code> to
+access the parts of an assignment.  Implementation of expressions will be
+described in detail in <a href="#g_t4_002e1_002e2">4.1.2</a>.  There are also operations,
+described in <a href="#g_t4_002e1_002e3">4.1.3</a>, that specify the representation of procedures
+and environments.  For example, <code>make-procedure</code> constructs compound
+procedures, <code>lookup-variable-value</code> accesses the values of variables, and
+<code>apply-primitive-procedure</code> applies a primitive procedure to a given list
+of arguments.
+</p>
+
+<hr>
+<span id="g_t4_002e1_002e1"></span><span id="The-Core-of-the-Evaluator"></span><h4 class="subsection"><span class="secnum">4.1.1</span><span class="sectitle">The Core of the Evaluator</span></h4>
+
+<p>The evaluation process can be described as the interplay between two
+procedures: <code>eval</code> and <code>apply</code>.
+</p>
+<span id="Eval"></span><h4 class="subsubheading">Eval</h4>
+
+<p><code>Eval</code> takes as arguments an expression and an environment.  It classifies
+the expression and directs its evaluation.  <code>Eval</code> is structured as a case
+analysis of the syntactic type of the expression to be evaluated.  In order to
+keep the procedure general, we express the determination of the type of an
+expression abstractly, making no commitment to any particular representation
+for the various types of expressions.  Each type of expression has a predicate
+that tests for it and an abstract means for selecting its parts.  This
+<span id="index-abstract-syntax"></span>
+<em>abstract syntax</em> makes it easy to see how we can change the syntax of
+the language by using the same evaluator, but with a different collection of
+syntax procedures.
+</p>
+<p><b>Primitive expressions</b>
+</p>
+<ul>
+<li> For self-evaluating expressions, such as numbers, <code>eval</code> returns the
+expression itself.
+
+</li><li> <code>Eval</code> must look up variables in the environment to find their values.
+
+</li></ul>
+
+<p><b>Special forms</b>
+</p>
+<ul>
+<li> For quoted expressions, <code>eval</code> returns the expression that was quoted.
+
+</li><li> An assignment to (or a definition of) a variable must recursively call
+<code>eval</code> to compute the new value to be associated with the variable.  The
+environment must be modified to change (or create) the binding of the variable.
+
+</li><li> An <code>if</code> expression requires special processing of its parts, so as to
+evaluate the consequent if the predicate is true, and otherwise to evaluate the
+alternative.
+
+</li><li> A <code>lambda</code> expression must be transformed into an applicable procedure by
+packaging together the parameters and body specified by the <code>lambda</code>
+expression with the environment of the evaluation.
+
+</li><li> A <code>begin</code> expression requires evaluating its sequence of expressions in
+the order in which they appear.
+
+</li><li> A case analysis (<code>cond</code>) is transformed into a nest of <code>if</code>
+expressions and then evaluated.
+
+</li></ul>
+
+<p><b>Combinations</b>
+</p>
+<ul>
+<li> For a procedure application, <code>eval</code> must recursively evaluate the operator
+part and the operands of the combination.  The resulting procedure and
+arguments are passed to <code>apply</code>, which handles the actual procedure
+application.
+
+</li></ul>
+
+<p>Here is the definition of <code>eval</code>:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (eval exp env)
+  (cond ((self-evaluating? exp) 
+         exp)
+        ((variable? exp) 
+         (lookup-variable-value exp env))
+        ((quoted? exp) 
+         (text-of-quotation exp))
+        ((assignment? exp) 
+         (eval-assignment exp env))
+        ((definition? exp) 
+         (eval-definition exp env))
+        ((if? exp) 
+         (eval-if exp env))
+        ((lambda? exp)
+         (make-procedure 
+          (lambda-parameters exp)
+          (lambda-body exp)
+          env))
+        ((begin? exp)
+         (eval-sequence 
+          (begin-actions exp) 
+          env))
+        ((cond? exp) 
+         (eval (cond-&gt;if exp) env))
+        ((application? exp)
+         (apply (eval (operator exp) env)
+                (list-of-values 
+                 (operands exp) 
+                 env)))
+        (else
+         (error &quot;Unknown expression 
+                 type: EVAL&quot; exp))))
+</pre></div>
+
+<p>For clarity, <code>eval</code> has been implemented as a case analysis using
+<code>cond</code>.  The disadvantage of this is that our procedure handles only a few
+distinguishable types of expressions, and no new ones can be defined without
+editing the definition of <code>eval</code>.  In most Lisp implementations,
+dispatching on the type of an expression is done in a data-directed style.
+This allows a user to add new types of expressions that <code>eval</code> can
+distinguish, without modifying the definition of <code>eval</code> itself.  (See
+<a href="#Exercise-4_002e3">Exercise 4.3</a>.)
+</p>
+<span id="Apply"></span><h4 class="subsubheading">Apply</h4>
+
+<p><code>Apply</code> takes two arguments, a procedure and a list of arguments to which
+the procedure should be applied.  <code>Apply</code> classifies procedures into two
+kinds: It calls <code>apply-primitive-procedure</code> to apply primitives; it
+applies compound procedures by sequentially evaluating the expressions that
+make up the body of the procedure.  The environment for the evaluation of the
+body of a compound procedure is constructed by extending the base environment
+carried by the procedure to include a frame that binds the parameters of the
+procedure to the arguments to which the procedure is to be applied.  Here is
+the definition of <code>apply</code>:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (apply procedure arguments)
+  (cond ((primitive-procedure? procedure)
+         (apply-primitive-procedure 
+          procedure 
+          arguments))
+        ((compound-procedure? procedure)
+         (eval-sequence
+           (procedure-body procedure)
+           (extend-environment
+             (procedure-parameters 
+              procedure)
+             arguments
+             (procedure-environment 
+              procedure))))
+        (else
+         (error &quot;Unknown procedure 
+                 type: APPLY&quot; 
+                procedure))))
+</pre></div>
+
+<span id="Procedure-arguments"></span><h4 class="subsubheading">Procedure arguments</h4>
+
+<p>When <code>eval</code> processes a procedure application, it uses
+<code>list-of-values</code> to produce the list of arguments to which the procedure
+is to be applied. <code>List-of-values</code> takes as an argument the operands of
+the combination.  It evaluates each operand and returns a list of the
+corresponding values:<a class="footnote_link" id="DOCF209" href="#FOOT209"><sup>209</sup></a>
+</p>
+<div class="lisp">
+<pre class="lisp">(define (list-of-values exps env)
+  (if (no-operands? exps)
+      '()
+      (cons (eval (first-operand exps) env)
+            (list-of-values 
+             (rest-operands exps) 
+             env))))
+</pre></div>
+
+<span id="Conditionals"></span><h4 class="subsubheading">Conditionals</h4>
+
+<p><code>Eval-if</code> evaluates the predicate part of an <code>if</code> expression in the
+given environment.  If the result is true, <code>eval-if</code> evaluates the
+consequent, otherwise it evaluates the alternative:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (eval-if exp env)
+  (if (true? (eval (if-predicate exp) env))
+      (eval (if-consequent exp) env)
+      (eval (if-alternative exp) env)))
+</pre></div>
+
+<p>The use of <code>true?</code> in <code>eval-if</code> highlights the issue of the
+connection between an implemented language and an implementation language.  The
+<code>if-predicate</code> is evaluated in the language being implemented and thus
+yields a value in that language.  The interpreter predicate <code>true?</code>
+translates that value into a value that can be tested by the <code>if</code> in the
+implementation language: The metacircular representation of truth might not be
+the same as that of the underlying Scheme.<a class="footnote_link" id="DOCF210" href="#FOOT210"><sup>210</sup></a>
+</p>
+<span id="Sequences"></span><h4 class="subsubheading">Sequences</h4>
+
+<p><code>Eval-sequence</code> is used by <code>apply</code> to evaluate the sequence of
+expressions in a procedure body and by <code>eval</code> to evaluate the sequence of
+expressions in a <code>begin</code> expression.  It takes as arguments a sequence of
+expressions and an environment, and evaluates the expressions in the order in
+which they occur.  The value returned is the value of the final expression.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (eval-sequence exps env)
+  (cond ((last-exp? exps) 
+         (eval (first-exp exps) env))
+        (else 
+         (eval (first-exp exps) env)
+         (eval-sequence (rest-exps exps) 
+                        env))))
+</pre></div>
+
+<span id="Assignments-and-definitions"></span><h4 class="subsubheading">Assignments and definitions</h4>
+
+<p>The following procedure handles assignments to variables.  It calls <code>eval</code>
+to find the value to be assigned and transmits the variable and the resulting
+value to <code>set-variable-value!</code> to be installed in the designated
+environment.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (eval-assignment exp env)
+  (set-variable-value! 
+   (assignment-variable exp)
+   (eval (assignment-value exp) env)
+   env)
+  'ok)
+</pre></div>
+
+<p>Definitions of variables are handled in a similar manner.<a class="footnote_link" id="DOCF211" href="#FOOT211"><sup>211</sup></a>
+</p>
+<div class="lisp">
+<pre class="lisp">(define (eval-definition exp env)
+  (define-variable! 
+    (definition-variable exp)
+    (eval (definition-value exp) env)
+    env)
+  'ok)
+</pre></div>
+
+<p>We have chosen here to return the symbol <code>ok</code> as the value of an
+assignment or a definition.<a class="footnote_link" id="DOCF212" href="#FOOT212"><sup>212</sup></a>
+</p>
+<blockquote>
+<p><strong><span id="Exercise-4_002e1"></span>Exercise 4.1:</strong> Notice that we cannot tell whether
+the metacircular evaluator evaluates operands from left to right or from right
+to left.  Its evaluation order is inherited from the underlying Lisp: If the
+arguments to <code>cons</code> in <code>list-of-values</code> are evaluated from left to
+right, then <code>list-of-values</code> will evaluate operands from left to right;
+and if the arguments to <code>cons</code> are evaluated from right to left, then
+<code>list-of-values</code> will evaluate operands from right to left.
+</p>
+<p>Write a version of <code>list-of-values</code> that evaluates operands from left to
+right regardless of the order of evaluation in the underlying Lisp.  Also write
+a version of <code>list-of-values</code> that evaluates operands from right to left.
+</p></blockquote>
+
+<hr>
+<span id="g_t4_002e1_002e2"></span><span id="Representing-Expressions"></span><h4 class="subsection"><span class="secnum">4.1.2</span><span class="sectitle">Representing Expressions</span></h4>
+
+<p>The evaluator is reminiscent of the symbolic differentiation program discussed
+in <a href="2_002e3.html#g_t2_002e3_002e2">2.3.2</a>.  Both programs operate on symbolic expressions.  In
+both programs, the result of operating on a compound expression is determined
+by operating recursively on the pieces of the expression and combining the
+results in a way that depends on the type of the expression.  In both programs
+we used data abstraction to decouple the general rules of operation from the
+details of how expressions are represented.  In the differentiation program
+this meant that the same differentiation procedure could deal with algebraic
+expressions in prefix form, in infix form, or in some other form.  For the
+evaluator, this means that the syntax of the language being evaluated is
+determined solely by the procedures that classify and extract pieces of
+expressions.
+</p>
+<p>Here is the specification of the syntax of our language:
+</p>
+<ul>
+<li> The only self-evaluating items are numbers and strings:
+
+<div class="lisp">
+<pre class="lisp">(define (self-evaluating? exp)
+  (cond ((number? exp) true)
+        ((string? exp) true)
+        (else false)))
+</pre></div>
+
+</li><li> Variables are represented by symbols:
+
+<div class="lisp">
+<pre class="lisp">(define (variable? exp) (symbol? exp))
+</pre></div>
+
+</li><li> Quotations have the form <code>(quote ⟨<var>text-of-quotation</var>⟩)</code>:<a class="footnote_link" id="DOCF213" href="#FOOT213"><sup>213</sup></a>
+
+<div class="lisp">
+<pre class="lisp">(define (quoted? exp)
+  (tagged-list? exp 'quote))
+
+(define (text-of-quotation exp)
+  (cadr exp))
+</pre></div>
+
+<p><code>Quoted?</code> is defined in terms of the procedure <code>tagged-list?</code>, which
+identifies lists beginning with a designated symbol:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (tagged-list? exp tag)
+  (if (pair? exp)
+      (eq? (car exp) tag)
+      false))
+</pre></div>
+
+</li><li> Assignments have the form <code>(set! ⟨<var>var</var>⟩ ⟨<var>value</var>⟩)</code>:
+
+<div class="lisp">
+<pre class="lisp">(define (assignment? exp)
+  (tagged-list? exp 'set!))
+
+(define (assignment-variable exp) 
+  (cadr exp))
+
+(define (assignment-value exp) (caddr exp))
+</pre></div>
+
+</li><li> Definitions have the form
+
+<div class="lisp">
+<pre class="lisp">(define ⟨<var>var</var>⟩ ⟨<var>value</var>⟩)
+</pre></div>
+
+<p>or the form
+</p>
+<div class="lisp">
+<pre class="lisp">(define (⟨<var>var</var>⟩ ⟨<var>param₁</var>⟩ <span class="roman">…</span> ⟨<var>paramₙ</var>⟩)
+  ⟨<var>body</var>⟩)
+</pre></div>
+
+<p>The latter form (standard procedure definition) is syntactic sugar for
+</p>
+<div class="lisp">
+<pre class="lisp">(define ⟨<var>var</var>⟩
+  (lambda (⟨<var>param₁</var>⟩ <span class="roman">…</span> ⟨<var>paramₙ</var>⟩)
+    ⟨<var>body</var>⟩))
+</pre></div>
+
+<p>The corresponding syntax procedures are the following:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (definition? exp)
+  (tagged-list? exp 'define))
+
+(define (definition-variable exp)
+  (if (symbol? (cadr exp))
+      (cadr exp)
+      (caadr exp)))
+
+(define (definition-value exp)
+  (if (symbol? (cadr exp))
+      (caddr exp)
+      (make-lambda 
+       (cdadr exp)   <span class="roman">; formal parameters</span>
+       (cddr exp)))) <span class="roman">; body</span>
+</pre></div>
+
+</li><li> <code>Lambda</code> expressions are lists that begin with the symbol <code>lambda</code>:
+
+<div class="lisp">
+<pre class="lisp">(define (lambda? exp) 
+  (tagged-list? exp 'lambda))
+(define (lambda-parameters exp) (cadr exp))
+(define (lambda-body exp) (cddr exp))
+</pre></div>
+
+<p>We also provide a constructor for <code>lambda</code> expressions, which is used by
+<code>definition-value</code>, above:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (make-lambda parameters body)
+  (cons 'lambda (cons parameters body)))
+</pre></div>
+
+</li><li> Conditionals begin with <code>if</code> and have a predicate, a consequent, and an
+(optional) alternative.  If the expression has no alternative part, we provide
+<code>false</code> as the alternative.<a class="footnote_link" id="DOCF214" href="#FOOT214"><sup>214</sup></a>
+
+<div class="lisp">
+<pre class="lisp">(define (if? exp) (tagged-list? exp 'if))
+(define (if-predicate exp) (cadr exp))
+(define (if-consequent exp) (caddr exp))
+(define (if-alternative exp)
+  (if (not (null? (cdddr exp)))
+      (cadddr exp)
+      'false))
+</pre></div>
+
+<p>We also provide a constructor for <code>if</code> expressions, to be used by
+<code>cond-&gt;if</code> to transform <code>cond</code> expressions into <code>if</code>
+expressions:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (make-if predicate 
+                 consequent 
+                 alternative)
+  (list 'if 
+        predicate 
+        consequent 
+        alternative))
+</pre></div>
+
+</li><li> <code>Begin</code> packages a sequence of expressions into a single expression.  We
+include syntax operations on <code>begin</code> expressions to extract the actual
+sequence from the <code>begin</code> expression, as well as selectors that return the
+first expression and the rest of the expressions in the
+sequence.<a class="footnote_link" id="DOCF215" href="#FOOT215"><sup>215</sup></a>
+
+<div class="lisp">
+<pre class="lisp">(define (begin? exp) 
+  (tagged-list? exp 'begin))
+(define (begin-actions exp) (cdr exp))
+(define (last-exp? seq) (null? (cdr seq)))
+(define (first-exp seq) (car seq))
+(define (rest-exps seq) (cdr seq))
+</pre></div>
+
+<p>We also include a constructor <code>sequence-&gt;exp</code> (for use by <code>cond-&gt;if</code>)
+that transforms a sequence into a single expression, using <code>begin</code> if
+necessary:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (sequence-&gt;exp seq)
+  (cond ((null? seq) seq)
+        ((last-exp? seq) (first-exp seq))
+        (else (make-begin seq))))
+
+(define (make-begin seq) (cons 'begin seq))
+</pre></div>
+
+</li><li> A procedure application is any compound expression that is not one of the above
+expression types.  The <code>car</code> of the expression is the operator, and the
+<code>cdr</code> is the list of operands:
+
+<div class="lisp">
+<pre class="lisp">(define (application? exp) (pair? exp))
+(define (operator exp) (car exp))
+(define (operands exp) (cdr exp))
+(define (no-operands? ops) (null? ops))
+(define (first-operand ops) (car ops))
+(define (rest-operands ops) (cdr ops))
+</pre></div>
+
+</li></ul>
+
+<span id="Derived-expressions"></span><h4 class="subsubheading">Derived expressions</h4>
+
+<p>Some special forms in our language can be defined in terms of expressions
+involving other special forms, rather than being implemented directly.  One
+example is <code>cond</code>, which can be implemented as a nest of <code>if</code>
+expressions.  For example, we can reduce the problem of evaluating the
+expression
+</p>
+<div class="lisp">
+<pre class="lisp">(cond ((&gt; x 0) x)
+      ((= x 0) (display 'zero) 0)
+      (else (- x)))
+</pre></div>
+
+<p>to the problem of evaluating the following expression involving <code>if</code> and
+<code>begin</code> expressions:
+</p>
+<div class="lisp">
+<pre class="lisp">(if (&gt; x 0)
+    x
+    (if (= x 0)
+        (begin (display 'zero) 0)
+        (- x)))
+</pre></div>
+
+<p>Implementing the evaluation of <code>cond</code> in this way simplifies the evaluator
+because it reduces the number of special forms for which the evaluation process
+must be explicitly specified.
+</p>
+<p>We include syntax procedures that extract the parts of a <code>cond</code>
+expression, and a procedure <code>cond-&gt;if</code> that transforms <code>cond</code>
+expressions into <code>if</code> expressions.  A case analysis begins with
+<code>cond</code> and has a list of predicate-action clauses.  A clause is an
+<code>else</code> clause if its predicate is the symbol <code>else</code>.<a class="footnote_link" id="DOCF216" href="#FOOT216"><sup>216</sup></a>
+</p>
+<div class="lisp">
+<pre class="lisp">(define (cond? exp) 
+  (tagged-list? exp 'cond))
+(define (cond-clauses exp) (cdr exp))
+(define (cond-else-clause? clause)
+  (eq? (cond-predicate clause) 'else))
+(define (cond-predicate clause) 
+  (car clause))
+(define (cond-actions clause) 
+  (cdr clause))
+(define (cond-&gt;if exp)
+  (expand-clauses (cond-clauses exp)))
+(define (expand-clauses clauses)
+  (if (null? clauses)
+      'false     <span class="roman">; no <code>else</code> clause</span>
+      (let ((first (car clauses))
+            (rest (cdr clauses)))
+        (if (cond-else-clause? first)
+            (if (null? rest)
+                (sequence-&gt;exp 
+                 (cond-actions first))
+                (error &quot;ELSE clause isn't 
+                        last: COND-&gt;IF&quot;
+                       clauses))
+            (make-if (cond-predicate first)
+                     (sequence-&gt;exp 
+                      (cond-actions first))
+                     (expand-clauses 
+                      rest))))))
+</pre></div>
+
+<p>Expressions (such as <code>cond</code>) that we choose to implement as syntactic
+transformations are called <span id="index-derived-expressions"></span>
+<em>derived expressions</em>.  <code>Let</code>
+expressions are also derived expressions (see 
+<a href="#Exercise-4_002e6">Exercise 4.6</a>).<a class="footnote_link" id="DOCF217" href="#FOOT217"><sup>217</sup></a>
+</p>
+<blockquote>
+<p><strong><span id="Exercise-4_002e2"></span>Exercise 4.2:</strong> Louis Reasoner plans to reorder the
+<code>cond</code> clauses in <code>eval</code> so that the clause for procedure
+applications appears before the clause for assignments.  He argues that this
+will make the interpreter more efficient: Since programs usually contain more
+applications than assignments, definitions, and so on, his modified <code>eval</code>
+will usually check fewer clauses than the original <code>eval</code> before
+identifying the type of an expression.
+</p>
+<ol type="a" start="1">
+<li> What is wrong with Louis&rsquo;s plan?  (Hint: What will Louis&rsquo;s evaluator do with
+the expression <code>(define x 3)</code>?)
+
+</li><li> Louis is upset that his plan didn&rsquo;t work.  He is willing to go to any lengths
+to make his evaluator recognize procedure applications before it checks for
+most other kinds of expressions.  Help him by changing the syntax of the
+evaluated language so that procedure applications start with <code>call</code>.  For
+example, instead of <code>(factorial 3)</code> we will now have to write <code>(call
+factorial 3)</code> and instead of <code>(+ 1 2)</code> we will have to write <code>(call +
+1 2)</code>.
+
+</li></ol>
+</blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e3"></span>Exercise 4.3:</strong> Rewrite <code>eval</code> so that the
+dispatch is done in data-directed style.  Compare this with the data-directed
+differentiation procedure of <a href="2_002e4.html#Exercise-2_002e73">Exercise 2.73</a>.  (You may use the <code>car</code>
+of a compound expression as the type of the expression, as is appropriate for
+the syntax implemented in this section.)
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e4"></span>Exercise 4.4:</strong> Recall the definitions of the
+special forms <code>and</code> and <code>or</code> from <a href="Chapter-1.html">Chapter 1</a>:
+</p>
+<ul>
+<li> <code>and</code>: The expressions are evaluated from left to right.  If any
+expression evaluates to false, false is returned; any remaining expressions are
+not evaluated.  If all the expressions evaluate to true values, the value of
+the last expression is returned.  If there are no expressions then true is
+returned.
+
+</li><li> <code>or</code>: The expressions are evaluated from left to right.  If any expression
+evaluates to a true value, that value is returned; any remaining expressions
+are not evaluated.  If all expressions evaluate to false, or if there are no
+expressions, then false is returned.
+
+</li></ul>
+
+<p>Install <code>and</code> and <code>or</code> as new special forms for the evaluator by
+defining appropriate syntax procedures and evaluation procedures
+<code>eval-and</code> and <code>eval-or</code>.  Alternatively, show how to implement
+<code>and</code> and <code>or</code> as derived expressions.
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e5"></span>Exercise 4.5:</strong> Scheme allows an additional syntax
+for <code>cond</code> clauses, <code>(⟨<var>test</var>⟩ =&gt; ⟨<var>recipient</var>⟩)</code>.  If
+<code>⟨</code><var>test</var><code>⟩</code> evaluates to a true value, then <code>⟨</code><var>recipient</var><code>⟩</code> is evaluated.
+Its value must be a procedure of one argument; this procedure is then invoked
+on the value of the <code>⟨</code><var>test</var><code>⟩</code>, and the result is returned as the value of
+the <code>cond</code> expression.  For example
+</p>
+<div class="lisp">
+<pre class="lisp">(cond ((assoc 'b '((a 1) (b 2))) =&gt; cadr)
+      (else false))
+</pre></div>
+
+<p>returns 2.  Modify the handling of <code>cond</code> so that it supports this
+extended syntax.
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e6"></span>Exercise 4.6:</strong> <code>Let</code> expressions are derived
+expressions, because
+</p>
+<div class="lisp">
+<pre class="lisp">(let ((⟨<var>var₁</var>⟩ ⟨<var>exp₁</var>⟩) <span class="roman">…</span> (⟨<var>varₙ</var>⟩ ⟨<var>expₙ</var>⟩))
+  ⟨<var>body</var>⟩)
+</pre></div>
+
+<p>is equivalent to
+</p>
+<div class="lisp">
+<pre class="lisp">((lambda (⟨<var>var₁</var>⟩ <span class="roman">…</span> ⟨<var>varₙ</var>⟩)
+   ⟨<var>body</var>⟩)
+ ⟨<var>exp₁</var>⟩
+ <span class="roman">…</span>
+ ⟨<var>expₙ</var>⟩)
+</pre></div>
+
+<p>Implement a syntactic transformation <code>let-&gt;combination</code> that reduces
+evaluating <code>let</code> expressions to evaluating combinations of the type shown
+above, and add the appropriate clause to <code>eval</code> to handle <code>let</code>
+expressions.
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e7"></span>Exercise 4.7:</strong> <code>Let*</code> is similar to
+<code>let</code>, except that the bindings of the <code>let*</code> variables are performed
+sequentially from left to right, and each binding is made in an environment in
+which all of the preceding bindings are visible.  For example
+</p>
+<div class="lisp">
+<pre class="lisp">(let* ((x 3)
+       (y (+ x 2))
+       (z (+ x y 5)))
+  (* x z))
+</pre></div>
+
+<p>returns 39.  Explain how a <code>let*</code> expression can be rewritten as a set of
+nested <code>let</code> expressions, and write a procedure <code>let*-&gt;nested-lets</code>
+that performs this transformation.  If we have already implemented <code>let</code>
+(<a href="#Exercise-4_002e6">Exercise 4.6</a>) and we want to extend the evaluator to handle <code>let*</code>,
+is it sufficient to add a clause to <code>eval</code> whose action is
+</p>
+<div class="lisp">
+<pre class="lisp">(eval (let*-&gt;nested-lets exp) env)
+</pre></div>
+
+<p>or must we explicitly expand <code>let*</code> in terms of non-derived expressions?
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e8"></span>Exercise 4.8:</strong> &ldquo;Named <code>let</code>&rdquo; is a variant
+of <code>let</code> that has the form 
+</p>
+<div class="lisp">
+<pre class="lisp">(let ⟨<var>var</var>⟩ ⟨<var>bindings</var>⟩ ⟨<var>body</var>⟩)
+</pre></div>
+
+<p>The <code>⟨</code><var>bindings</var><code>⟩</code> and <code>⟨</code><var>body</var><code>⟩</code> are just as in ordinary <code>let</code>,
+except that <code>⟨</code><var>var</var><code>⟩</code> is bound within <code>⟨</code><var>body</var><code>⟩</code> to a procedure whose body
+is <code>⟨</code><var>body</var><code>⟩</code> and whose parameters are the variables in the <code>⟨</code><var>bindings</var><code>⟩</code>.
+Thus, one can repeatedly execute the <code>⟨</code><var>body</var><code>⟩</code> by invoking the procedure
+named <code>⟨</code><var>var</var><code>⟩</code>.  For example, the iterative Fibonacci procedure 
+(<a href="1_002e2.html#g_t1_002e2_002e2">1.2.2</a>) can be rewritten using named <code>let</code> as follows:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (fib n)
+  (let fib-iter ((a 1) (b 0) (count n))
+    (if (= count 0)
+        b
+        (fib-iter (+ a b) 
+                  a 
+                  (- count 1)))))
+</pre></div>
+
+<p>Modify <code>let-&gt;combination</code> of <a href="#Exercise-4_002e6">Exercise 4.6</a> to also support named
+<code>let</code>.
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e9"></span>Exercise 4.9:</strong> Many languages support a variety of
+iteration constructs, such as <code>do</code>, <code>for</code>, <code>while</code>, and
+<code>until</code>.  In Scheme, iterative processes can be expressed in terms of
+ordinary procedure calls, so special iteration constructs provide no essential
+gain in computational power.  On the other hand, such constructs are often
+convenient.  Design some iteration constructs, give examples of their use, and
+show how to implement them as derived expressions.
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e10"></span>Exercise 4.10:</strong> By using data abstraction, we
+were able to write an <code>eval</code> procedure that is independent of the
+particular syntax of the language to be evaluated.  To illustrate this, design
+and implement a new syntax for Scheme by modifying the procedures in this
+section, without changing <code>eval</code> or <code>apply</code>.
+</p></blockquote>
+
+<hr>
+<span id="g_t4_002e1_002e3"></span><span id="Evaluator-Data-Structures"></span><h4 class="subsection"><span class="secnum">4.1.3</span><span class="sectitle">Evaluator Data Structures</span></h4>
+
+<p>In addition to defining the external syntax of expressions, the evaluator
+implementation must also define the data structures that the evaluator
+manipulates internally, as part of the execution of a program, such as the
+representation of procedures and environments and the representation of true
+and false.
+</p>
+<span id="Testing-of-predicates"></span><h4 class="subsubheading">Testing of predicates</h4>
+
+<p>For conditionals, we accept anything to be true that is not the explicit
+<code>false</code> object.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (true? x)
+  (not (eq? x false)))
+
+(define (false? x)
+  (eq? x false))
+</pre></div>
+
+<span id="Representing-procedures"></span><h4 class="subsubheading">Representing procedures</h4>
+
+<p>To handle primitives, we assume that we have available the following
+procedures:
+</p>
+<ul>
+<li> <code>(apply-primitive-procedure ⟨<var>proc</var>⟩ ⟨<var>args</var>⟩)</code>
+
+<p>applies the given primitive procedure to the argument values in the list
+<code>⟨</code><var>args</var><code>⟩</code> and returns the result of the application.
+</p>
+</li><li> <code>(primitive-procedure? ⟨<var>proc</var>⟩)</code>
+
+<p>tests whether <code>⟨</code><var>proc</var><code>⟩</code> is a primitive procedure.
+</p>
+</li></ul>
+
+<p>These mechanisms for handling primitives are further described in 
+<a href="#g_t4_002e1_002e4">4.1.4</a>.
+</p>
+<p>Compound procedures are constructed from parameters, procedure bodies, and
+environments using the constructor <code>make-procedure</code>:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (make-procedure parameters body env)
+  (list 'procedure parameters body env))
+(define (compound-procedure? p)
+  (tagged-list? p 'procedure))
+(define (procedure-parameters p) (cadr p))
+(define (procedure-body p) (caddr p))
+(define (procedure-environment p) (cadddr p))
+</pre></div>
+
+<span id="Operations-on-Environments"></span><h4 class="subsubheading">Operations on Environments</h4>
+
+<p>The evaluator needs operations for manipulating environments.  As explained in
+<a href="3_002e2.html#g_t3_002e2">3.2</a>, an environment is a sequence of frames, where each frame is
+a table of bindings that associate variables with their corresponding values.
+We use the following operations for manipulating environments:
+</p>
+<ul>
+<li> <code>(lookup-variable-value ⟨<var>var</var>⟩ ⟨<var>env</var>⟩)</code>
+
+<p>returns the value that is bound to the symbol <code>⟨</code><var>var</var><code>⟩</code> in the environment
+<code>⟨</code><var>env</var><code>⟩</code>, or signals an error if the variable is unbound.
+</p>
+</li><li> <code>(extend-environment ⟨<var>variables</var>⟩ ⟨<var>values</var>⟩ ⟨<var>base-env</var>⟩)</code>
+
+<p>returns a new environment, consisting of a new frame in which the symbols in
+the list <code>⟨</code><var>variables</var><code>⟩</code> are bound to the corresponding elements in the list
+<code>⟨</code><var>values</var><code>⟩</code>, where the enclosing environment is the environment
+<code>⟨</code><var>base-env</var><code>⟩</code>.
+</p>
+</li><li> <code>(define-variable! ⟨<var>var</var>⟩ ⟨<var>value</var>⟩ ⟨<var>env</var>⟩)</code>
+
+<p>adds to the first frame in the environment <code>⟨</code><var>env</var><code>⟩</code> a new binding that
+associates the variable <code>⟨</code><var>var</var><code>⟩</code> with the value <code>⟨</code><var>value</var><code>⟩</code>.
+</p>
+</li><li> <code>(set-variable-value! ⟨<var>var</var>⟩ ⟨<var>value</var>⟩ ⟨<var>env</var>⟩)</code>
+
+<p>changes the binding of the variable <code>⟨</code><var>var</var><code>⟩</code> in the environment <code>⟨</code><var>env</var><code>⟩</code>
+so that the variable is now bound to the value <code>⟨</code><var>value</var><code>⟩</code>, or signals an
+error if the variable is unbound.
+</p>
+</li></ul>
+
+<p>To implement these operations we represent an environment as a list of frames.
+The enclosing environment of an environment is the <code>cdr</code> of the list.  The
+empty environment is simply the empty list.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (enclosing-environment env) (cdr env))
+(define (first-frame env) (car env))
+(define the-empty-environment '())
+</pre></div>
+
+<p>Each frame of an environment is represented as a pair of lists: a list of the
+variables bound in that frame and a list of the associated
+values.<a class="footnote_link" id="DOCF218" href="#FOOT218"><sup>218</sup></a>
+</p>
+<div class="lisp">
+<pre class="lisp">(define (make-frame variables values)
+  (cons variables values))
+(define (frame-variables frame) (car frame))
+(define (frame-values frame) (cdr frame))
+(define (add-binding-to-frame! var val frame)
+  (set-car! frame (cons var (car frame)))
+  (set-cdr! frame (cons val (cdr frame))))
+</pre></div>
+
+<p>To extend an environment by a new frame that associates variables with values,
+we make a frame consisting of the list of variables and the list of values, and
+we adjoin this to the environment.  We signal an error if the number of
+variables does not match the number of values.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (extend-environment vars vals base-env)
+  (if (= (length vars) (length vals))
+      (cons (make-frame vars vals) base-env)
+      (if (&lt; (length vars) (length vals))
+          (error &quot;Too many arguments supplied&quot; 
+                 vars 
+                 vals)
+          (error &quot;Too few arguments supplied&quot; 
+                 vars 
+                 vals))))
+</pre></div>
+
+<p>To look up a variable in an environment, we scan the list of variables in the
+first frame.  If we find the desired variable, we return the corresponding
+element in the list of values.  If we do not find the variable in the current
+frame, we search the enclosing environment, and so on.  If we reach the empty
+environment, we signal an &ldquo;unbound variable&rdquo; error.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (lookup-variable-value var env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (env-loop 
+              (enclosing-environment env)))
+            ((eq? var (car vars))
+             (car vals))
+            (else (scan (cdr vars) 
+                        (cdr vals)))))
+    (if (eq? env the-empty-environment)
+        (error &quot;Unbound variable&quot; var)
+        (let ((frame (first-frame env)))
+          (scan (frame-variables frame)
+                (frame-values frame)))))
+  (env-loop env))
+</pre></div>
+
+<p>To set a variable to a new value in a specified environment, we scan for the
+variable, just as in <code>lookup-variable-value</code>, and change the corresponding
+value when we find it.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (set-variable-value! var val env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (env-loop 
+              (enclosing-environment env)))
+            ((eq? var (car vars))
+             (set-car! vals val))
+            (else (scan (cdr vars) 
+                        (cdr vals)))))
+    (if (eq? env the-empty-environment)
+        (error &quot;Unbound variable: SET!&quot; var)
+        (let ((frame (first-frame env)))
+          (scan (frame-variables frame)
+                (frame-values frame)))))
+  (env-loop env))
+</pre></div>
+
+<p>To define a variable, we search the first frame for a binding for the variable,
+and change the binding if it exists (just as in <code>set-variable-value!</code>).
+If no such binding exists, we adjoin one to the first frame.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (define-variable! var val env)
+  (let ((frame (first-frame env)))
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (add-binding-to-frame! 
+              var val frame))
+            ((eq? var (car vars))
+             (set-car! vals val))
+            (else (scan (cdr vars) 
+                        (cdr vals)))))
+    (scan (frame-variables frame)
+          (frame-values frame))))
+</pre></div>
+
+<p>The method described here is only one of many plausible ways to represent
+environments.  Since we used data abstraction to isolate the rest of the
+evaluator from the detailed choice of representation, we could change the
+environment representation if we wanted to.  (See <a href="#Exercise-4_002e11">Exercise 4.11</a>.)  In a
+production-quality Lisp system, the speed of the evaluator&rsquo;s environment
+operations&mdash;especially that of variable lookup&mdash;has a major impact on the
+performance of the system.  The representation described here, although
+conceptually simple, is not efficient and would not ordinarily be used in a
+production system.<a class="footnote_link" id="DOCF219" href="#FOOT219"><sup>219</sup></a>
+</p>
+<blockquote>
+<p><strong><span id="Exercise-4_002e11"></span>Exercise 4.11:</strong> Instead of representing a frame
+as a pair of lists, we can represent a frame as a list of bindings, where each
+binding is a name-value pair.  Rewrite the environment operations to use this
+alternative representation.
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e12"></span>Exercise 4.12:</strong> The procedures
+<code>define-variable!</code>, <code>set-variable-value!</code> and
+<code>lookup-variable-value</code> can be expressed in terms of more abstract
+procedures for traversing the environment structure.  Define abstractions that
+capture the common patterns and redefine the three procedures in terms of these
+abstractions.
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e13"></span>Exercise 4.13:</strong> Scheme allows us to create new
+bindings for variables by means of <code>define</code>, but provides no way to get
+rid of bindings.  Implement for the evaluator a special form
+<code>make-unbound!</code> that removes the binding of a given symbol from the
+environment in which the <code>make-unbound!</code> expression is evaluated.  This
+problem is not completely specified.  For example, should we remove only the
+binding in the first frame of the environment?  Complete the specification and
+justify any choices you make.
+</p></blockquote>
+
+<hr>
+<span id="g_t4_002e1_002e4"></span><span id="Running-the-Evaluator-as-a-Program"></span><h4 class="subsection"><span class="secnum">4.1.4</span><span class="sectitle">Running the Evaluator as a Program</span></h4>
+
+<p>Given the evaluator, we have in our hands a description (expressed in Lisp) of
+the process by which Lisp expressions are evaluated.  One advantage of
+expressing the evaluator as a program is that we can run the program.  This
+gives us, running within Lisp, a working model of how Lisp itself evaluates
+expressions.  This can serve as a framework for experimenting with evaluation
+rules, as we shall do later in this chapter.
+</p>
+<p>Our evaluator program reduces expressions ultimately to the application of
+primitive procedures.  Therefore, all that we need to run the evaluator is to
+create a mechanism that calls on the underlying Lisp system to model the
+application of primitive procedures.
+</p>
+<p>There must be a binding for each primitive procedure name, so that when
+<code>eval</code> evaluates the operator of an application of a primitive, it will
+find an object to pass to <code>apply</code>.  We thus set up a global environment
+that associates unique objects with the names of the primitive procedures that
+can appear in the expressions we will be evaluating.  The global environment
+also includes bindings for the symbols <code>true</code> and <code>false</code>, so that
+they can be used as variables in expressions to be evaluated.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (setup-environment)
+  (let ((initial-env
+         (extend-environment 
+          (primitive-procedure-names)
+          (primitive-procedure-objects)
+          the-empty-environment)))
+    (define-variable! 'true true initial-env)
+    (define-variable! 'false false initial-env)
+    initial-env))
+
+(define the-global-environment 
+  (setup-environment))
+</pre></div>
+
+<p>It does not matter how we represent the primitive procedure objects, so long as
+<code>apply</code> can identify and apply them by using the procedures
+<code>primitive-procedure?</code> and <code>apply-primitive-procedure</code>.  We have
+chosen to represent a primitive procedure as a list beginning with the symbol
+<code>primitive</code> and containing a procedure in the underlying Lisp that
+implements that primitive.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (primitive-procedure? proc)
+  (tagged-list? proc 'primitive))
+
+(define (primitive-implementation proc) 
+  (cadr proc))
+</pre></div>
+
+<p><code>Setup-environment</code> will get the primitive names and implementation
+procedures from a list:<a class="footnote_link" id="DOCF220" href="#FOOT220"><sup>220</sup></a>
+</p>
+<div class="lisp">
+<pre class="lisp">(define primitive-procedures
+  (list (list 'car car)
+        (list 'cdr cdr)
+        (list 'cons cons)
+        (list 'null? null?)
+        ⟨<var>more primitives</var>⟩ ))
+
+(define (primitive-procedure-names)
+  (map car primitive-procedures))
+
+(define (primitive-procedure-objects)
+  (map (lambda (proc) 
+         (list 'primitive (cadr proc)))
+       primitive-procedures))
+</pre></div>
+
+<p>To apply a primitive procedure, we simply apply the implementation procedure to
+the arguments, using the underlying Lisp
+system:<a class="footnote_link" id="DOCF221" href="#FOOT221"><sup>221</sup></a>
+</p>
+<div class="lisp">
+<pre class="lisp">(define (apply-primitive-procedure proc args)
+  (apply-in-underlying-scheme
+   (primitive-implementation proc) args))
+</pre></div>
+
+<p>For convenience in running the metacircular evaluator, we provide a
+<span id="index-driver-loop"></span>
+<em>driver loop</em> that models the read-eval-print loop of the underlying
+Lisp system.  It prints a <span id="index-prompt"></span>
+<em>prompt</em>, reads an input expression,
+evaluates this expression in the global environment, and prints the result.  We
+precede each printed result by an <span id="index-output-prompt"></span>
+<em>output prompt</em> so as to distinguish
+the value of the expression from other output that may be printed.<a class="footnote_link" id="DOCF222" href="#FOOT222"><sup>222</sup></a>
+</p>
+<div class="lisp">
+<pre class="lisp">(define input-prompt  &quot;;;; M-Eval input:&quot;)
+(define output-prompt &quot;;;; M-Eval value:&quot;)
+
+(define (driver-loop)
+  (prompt-for-input input-prompt)
+  (let ((input (read)))
+    (let ((output 
+           (eval input 
+                 the-global-environment)))
+      (announce-output output-prompt)
+      (user-print output)))
+  (driver-loop))
+
+(define (prompt-for-input string)
+  (newline) (newline) 
+  (display string) (newline))
+
+(define (announce-output string)
+  (newline) (display string) (newline))
+</pre></div>
+
+<p>We use a special printing procedure, <code>user-print</code>, to avoid printing the
+environment part of a compound procedure, which may be a very long list (or may
+even contain cycles).
+</p>
+<div class="lisp">
+<pre class="lisp">(define (user-print object)
+  (if (compound-procedure? object)
+      (display 
+       (list 'compound-procedure
+             (procedure-parameters object)
+             (procedure-body object)
+             '&lt;procedure-env&gt;))
+      (display object)))
+</pre></div>
+
+<p>Now all we need to do to run the evaluator is to initialize the global
+environment and start the driver loop.  Here is a sample interaction:
+</p>
+<div class="lisp">
+<pre class="lisp">(define the-global-environment 
+  (setup-environment))
+
+(driver-loop)
+
+<i>;;; M-Eval input:</i>
+(define (append x y)
+  (if (null? x)
+      y
+      (cons (car x) (append (cdr x) y))))
+
+<i>;;; M-Eval value:</i>
+<i>ok</i>
+
+<i>;;; M-Eval input:</i>
+(append '(a b c) '(d e f))
+
+<i>;;; M-Eval value:</i>
+<i>(a b c d e f)</i>
+</pre></div>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e14"></span>Exercise 4.14:</strong> Eva Lu Ator and Louis Reasoner
+are each experimenting with the metacircular evaluator.  Eva types in the
+definition of <code>map</code>, and runs some test programs that use it.  They work
+fine.  Louis, in contrast, has installed the system version of <code>map</code> as a
+primitive for the metacircular evaluator.  When he tries it, things go terribly
+wrong.  Explain why Louis&rsquo;s <code>map</code> fails even though Eva&rsquo;s works.
+</p></blockquote>
+
+<hr>
+<span id="g_t4_002e1_002e5"></span><span id="Data-as-Programs"></span><h4 class="subsection"><span class="secnum">4.1.5</span><span class="sectitle">Data as Programs</span></h4>
+
+<p>In thinking about a Lisp program that evaluates Lisp expressions, an analogy
+might be helpful.  One operational view of the meaning of a program is that a
+program is a description of an abstract (perhaps infinitely large) machine.
+For example, consider the familiar program to compute factorials:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (factorial n)
+  (if (= n 1)
+      1
+      (* (factorial (- n 1)) n)))
+</pre></div>
+
+<p>We may regard this program as the description of a machine containing parts
+that decrement, multiply, and test for equality, together with a two-position
+switch and another factorial machine. (The factorial machine is infinite
+because it contains another factorial machine within it.)  <a href="#Figure-4_002e2">Figure 4.2</a> is
+a flow diagram for the factorial machine, showing how the parts are wired
+together.
+</p>
+<div class="float">
+<span id="Figure-4_002e2"></span><img src="fig/chap4/Fig4.2a.std.svg" alt="fig/chap4/Fig4.2a">
+
+<div class="float-caption"><p><strong>Figure 4.2:</strong> The factorial program, viewed as an abstract machine.</p></div></div>
+<p>In a similar way, we can regard the evaluator as a very special machine that
+takes as input a description of a machine.  Given this input, the evaluator
+configures itself to emulate the machine described.  For example, if we feed
+our evaluator the definition of <code>factorial</code>, as shown in <a href="#Figure-4_002e3">Figure 4.3</a>,
+the evaluator will be able to compute factorials.
+</p>
+<div class="float">
+<span id="Figure-4_002e3"></span><img src="fig/chap4/Fig4.3.std.svg" alt="fig/chap4/Fig4.3">
+
+<div class="float-caption"><p><strong>Figure 4.3:</strong> The evaluator emulating a factorial machine.</p></div></div>
+<p>From this perspective, our evaluator is seen to be a <span id="index-universal-machine"></span>
+<em>universal machine</em>.  
+It mimics other machines when these are described as Lisp
+programs.<a class="footnote_link" id="DOCF223" href="#FOOT223"><sup>223</sup></a> This is striking. Try to imagine an analogous evaluator
+for electrical circuits.  This would be a circuit that takes as input a signal
+encoding the plans for some other circuit, such as a filter.  Given this input,
+the circuit evaluator would then behave like a filter with the same
+description.  Such a universal electrical circuit is almost unimaginably
+complex.  It is remarkable that the program evaluator is a rather simple
+program.<a class="footnote_link" id="DOCF224" href="#FOOT224"><sup>224</sup></a>
+</p>
+<p>Another striking aspect of the evaluator is that it acts as a bridge between
+the data objects that are manipulated by our programming language and the
+programming language itself.  Imagine that the evaluator program (implemented
+in Lisp) is running, and that a user is typing expressions to the evaluator and
+observing the results.  From the perspective of the user, an input expression
+such as <code>(* x x)</code> is an expression in the programming language, which the
+evaluator should execute.  From the perspective of the evaluator, however, the
+expression is simply a list (in this case, a list of three symbols: <code>*</code>,
+<code>x</code>, and <code>x</code>) that is to be manipulated according to a well-defined
+set of rules.
+</p>
+<p>That the user&rsquo;s programs are the evaluator&rsquo;s data need not be a source of
+confusion.  In fact, it is sometimes convenient to ignore this distinction, and
+to give the user the ability to explicitly evaluate a data object as a Lisp
+expression, by making <code>eval</code> available for use in programs.  Many Lisp
+dialects provide a primitive <code>eval</code> procedure that takes as arguments an
+expression and an environment and evaluates the expression relative to the
+environment.<a class="footnote_link" id="DOCF225" href="#FOOT225"><sup>225</sup></a> Thus,
+</p>
+<div class="lisp">
+<pre class="lisp">(eval '(* 5 5) user-initial-environment)
+</pre></div>
+
+<p>and
+</p>
+<div class="lisp">
+<pre class="lisp">(eval (cons '* (list 5 5)) 
+      user-initial-environment)
+</pre></div>
+
+<p>will both return 25.<a class="footnote_link" id="DOCF226" href="#FOOT226"><sup>226</sup></a>
+</p>
+<blockquote>
+<p><strong><span id="Exercise-4_002e15"></span>Exercise 4.15:</strong> Given a one-argument procedure
+<code>p</code> and an object <code>a</code>, <code>p</code> is said to &ldquo;halt&rdquo; on <code>a</code> if
+evaluating the expression <code>(p a)</code> returns a value (as opposed to
+terminating with an error message or running forever).  Show that it is
+impossible to write a procedure <code>halts?</code> that correctly determines whether
+<code>p</code> halts on <code>a</code> for any procedure <code>p</code> and object <code>a</code>.  Use
+the following reasoning: If you had such a procedure <code>halts?</code>, you could
+implement the following program:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (run-forever)
+  (run-forever))
+
+(define (try p)
+  (if (halts? p p)
+      (run-forever)
+      'halted))
+</pre></div>
+
+<p>Now consider evaluating the expression <code>(try try)</code> and show that any
+possible outcome (either halting or running forever) violates the intended
+behavior of <code>halts?</code>.<a class="footnote_link" id="DOCF227" href="#FOOT227"><sup>227</sup></a>
+</p></blockquote>
+
+<hr>
+<span id="g_t4_002e1_002e6"></span><span id="Internal-Definitions-1"></span><h4 class="subsection"><span class="secnum">4.1.6</span><span class="sectitle">Internal Definitions</span></h4>
+
+<p>Our environment model of evaluation and our metacircular evaluator execute
+definitions in sequence, extending the environment frame one definition at a
+time.  This is particularly convenient for interactive program development, in
+which the programmer needs to freely mix the application of procedures with the
+definition of new procedures.  However, if we think carefully about the
+internal definitions used to implement block structure (introduced in 
+<a href="1_002e1.html#g_t1_002e1_002e8">1.1.8</a>), we will find that name-by-name extension of the environment may
+not be the best way to define local variables.
+</p>
+<p>Consider a procedure with internal definitions, such as
+</p>
+<div class="lisp">
+<pre class="lisp">(define (f x)
+  (define (even? n)
+    (if (= n 0)
+        true
+        (odd? (- n 1))))
+  (define (odd? n)
+    (if (= n 0)
+        false
+        (even? (- n 1))))
+  ⟨<var>rest of body of <code>f</code></var>⟩)
+</pre></div>
+
+<p>Our intention here is that the name <code>odd?</code> in the body of the procedure
+<code>even?</code> should refer to the procedure <code>odd?</code> that is defined after
+<code>even?</code>.  The scope of the name <code>odd?</code> is the entire body of
+<code>f</code>, not just the portion of the body of <code>f</code> starting at the point
+where the <code>define</code> for <code>odd?</code> occurs.  Indeed, when we consider that
+<code>odd?</code> is itself defined in terms of <code>even?</code>&mdash;so that <code>even?</code>
+and <code>odd?</code> are mutually recursive procedures&mdash;we see that the only
+satisfactory interpretation of the two <code>define</code>s is to regard them as if
+the names <code>even?</code> and <code>odd?</code> were being added to the environment
+simultaneously.  More generally, in block structure, the scope of a local name
+is the entire procedure body in which the <code>define</code> is evaluated.
+</p>
+<p>As it happens, our interpreter will evaluate calls to <code>f</code> correctly, but
+for an &ldquo;accidental&rdquo; reason: Since the definitions of the internal procedures
+come first, no calls to these procedures will be evaluated until all of them
+have been defined.  Hence, <code>odd?</code>  will have been defined by the time
+<code>even?</code> is executed.  In fact, our sequential evaluation mechanism will
+give the same result as a mechanism that directly implements simultaneous
+definition for any procedure in which the internal definitions come first in a
+body and evaluation of the value expressions for the defined variables doesn&rsquo;t
+actually use any of the defined variables.  (For an example of a procedure that
+doesn&rsquo;t obey these restrictions, so that sequential definition isn&rsquo;t equivalent
+to simultaneous definition, see <a href="#Exercise-4_002e19">Exercise 4.19</a>.)<a class="footnote_link" id="DOCF228" href="#FOOT228"><sup>228</sup></a>
+</p>
+<p>There is, however, a simple way to treat definitions so that internally defined
+names have truly simultaneous scope&mdash;just create all local variables that will
+be in the current environment before evaluating any of the value expressions.
+One way to do this is by a syntax transformation on <code>lambda</code> expressions.
+Before evaluating the body of a <code>lambda</code> expression, we &ldquo;scan out&rdquo; and
+eliminate all the internal definitions in the body.  The internally defined
+variables will be created with a <code>let</code> and then set to their values by
+assignment.  For example, the procedure
+</p>
+<div class="lisp">
+<pre class="lisp">(lambda ⟨<var>vars</var>⟩
+  (define u ⟨<var>e1</var>⟩)
+  (define v ⟨<var>e2</var>⟩)
+  ⟨<var>e3</var>⟩)
+</pre></div>
+
+<p>would be transformed into
+</p>
+<div class="lisp">
+<pre class="lisp">(lambda ⟨<var>vars</var>⟩
+  (let ((u '*unassigned*)
+        (v '*unassigned*))
+    (set! u ⟨<var>e1</var>⟩)
+    (set! v ⟨<var>e2</var>⟩)
+    ⟨<var>e3</var>⟩))
+</pre></div>
+
+<p>where <code>*unassigned*</code> is a special symbol that causes looking up a variable
+to signal an error if an attempt is made to use the value of the
+not-yet-assigned variable.
+</p>
+<p>An alternative strategy for scanning out internal definitions is shown in
+<a href="#Exercise-4_002e18">Exercise 4.18</a>.  Unlike the transformation shown above, this enforces the
+restriction that the defined variables&rsquo; values can be evaluated without using
+any of the variables&rsquo; values.<a class="footnote_link" id="DOCF229" href="#FOOT229"><sup>229</sup></a>
+</p>
+<blockquote>
+<p><strong><span id="Exercise-4_002e16"></span>Exercise 4.16:</strong> In this exercise we implement the
+method just described for interpreting internal definitions.  We assume that
+the evaluator supports <code>let</code> (see <a href="#Exercise-4_002e6">Exercise 4.6</a>).
+</p>
+<ol type="a" start="1">
+<li> Change <code>lookup-variable-value</code> (<a href="#g_t4_002e1_002e3">4.1.3</a>) to signal an error if
+the value it finds is the symbol <code>*unassigned*</code>.
+
+</li><li> Write a procedure <code>scan-out-defines</code> that takes a procedure body and
+returns an equivalent one that has no internal definitions, by making the
+transformation described above.
+
+</li><li> Install <code>scan-out-defines</code> in the interpreter, either in
+<code>make-procedure</code> or in <code>procedure-body</code> (see <a href="#g_t4_002e1_002e3">4.1.3</a>).
+Which place is better?  Why?
+
+</li></ol>
+</blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e17"></span>Exercise 4.17:</strong> Draw diagrams of the environment
+in effect when evaluating the expression <code>⟨</code><var>e3</var><code>⟩</code> in the procedure in the
+text, comparing how this will be structured when definitions are interpreted
+sequentially with how it will be structured if definitions are scanned out as
+described.  Why is there an extra frame in the transformed program?  Explain
+why this difference in environment structure can never make a difference in the
+behavior of a correct program.  Design a way to make the interpreter implement
+the &ldquo;simultaneous&rdquo; scope rule for internal definitions without constructing
+the extra frame.
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e18"></span>Exercise 4.18:</strong> Consider an alternative strategy
+for scanning out definitions that translates the example in the text to
+</p>
+<div class="lisp">
+<pre class="lisp">(lambda ⟨<var>vars</var>⟩
+  (let ((u '*unassigned*)
+        (v '*unassigned*))
+    (let ((a ⟨<var>e1</var>⟩)
+          (b ⟨<var>e2</var>⟩))
+      (set! u a)
+      (set! v b))
+    ⟨<var>e3</var>⟩))
+</pre></div>
+
+<p>Here <code>a</code> and <code>b</code> are meant to represent new variable names, created
+by the interpreter, that do not appear in the user&rsquo;s program.  Consider the
+<code>solve</code> procedure from <a href="3_002e5.html#g_t3_002e5_002e4">3.5.4</a>:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (solve f y0 dt)
+  (define y (integral (delay dy) y0 dt))
+  (define dy (stream-map f y))
+  y)
+</pre></div>
+
+<p>Will this procedure work if internal definitions are scanned out as shown in
+this exercise?  What if they are scanned out as shown in the text?  Explain.
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e19"></span>Exercise 4.19:</strong> Ben Bitdiddle, Alyssa P. Hacker,
+and Eva Lu Ator are arguing about the desired result of evaluating the
+expression
+</p>
+<div class="lisp">
+<pre class="lisp">(let ((a 1))
+  (define (f x)
+    (define b (+ a x))
+    (define a 5)
+    (+ a b))
+  (f 10))
+</pre></div>
+
+<p>Ben asserts that the result should be obtained using the sequential rule for
+<code>define</code>: <code>b</code> is defined to be 11, then <code>a</code> is defined to be 5,
+so the result is 16.  Alyssa objects that mutual recursion requires the
+simultaneous scope rule for internal procedure definitions, and that it is
+unreasonable to treat procedure names differently from other names.  Thus, she
+argues for the mechanism implemented in <a href="#Exercise-4_002e16">Exercise 4.16</a>.  This would lead
+to <code>a</code> being unassigned at the time that the value for <code>b</code> is to be
+computed.  Hence, in Alyssa&rsquo;s view the procedure should produce an error.  Eva
+has a third opinion.  She says that if the definitions of <code>a</code> and <code>b</code>
+are truly meant to be simultaneous, then the value 5 for <code>a</code> should be
+used in evaluating <code>b</code>.  Hence, in Eva&rsquo;s view <code>a</code> should be 5,
+<code>b</code> should be 15, and the result should be 20.  Which (if any) of these
+viewpoints do you support?  Can you devise a way to implement internal
+definitions so that they behave as Eva prefers?<a class="footnote_link" id="DOCF230" href="#FOOT230"><sup>230</sup></a>
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e20"></span>Exercise 4.20:</strong> Because internal definitions look
+sequential but are actually simultaneous, some people prefer to avoid them
+entirely, and use the special form <code>letrec</code> instead.  <code>Letrec</code> looks
+like <code>let</code>, so it is not surprising that the variables it binds are bound
+simultaneously and have the same scope as each other.  The sample procedure
+<code>f</code> above can be written without internal definitions, but with exactly
+the same meaning, as
+</p>
+<div class="lisp">
+<pre class="lisp">(define (f x)
+  (letrec
+      ((even?
+        (lambda (n)
+          (if (= n 0)
+              true
+              (odd? (- n 1)))))
+       (odd?
+        (lambda (n)
+          (if (= n 0)
+              false
+              (even? (- n 1))))))
+    ⟨<var>rest of body of <code>f</code></var>⟩))
+</pre></div>
+
+<p><code>Letrec</code> expressions, which have the form
+</p>
+<div class="lisp">
+<pre class="lisp">(letrec ((⟨<var>var₁</var>⟩ ⟨<var>exp₁</var>⟩) <span class="roman">…</span> (⟨<var>varₙ</var>⟩ ⟨<var>expₙ</var>⟩))
+  ⟨<var>body</var>⟩)
+</pre></div>
+
+<p>are a variation on <code>let</code> in which the expressions
+\( {⟨\kern0.1em exp_k⟩} \) that provide the initial values for the
+variables \( {⟨\kern0.06em var_k⟩} \) are evaluated in an environment
+that includes all the <code>letrec</code> bindings.  This permits recursion in the
+bindings, such as the mutual recursion of <code>even?</code> and <code>odd?</code> in the
+example above, or the evaluation of 10 factorial with
+</p>
+<div class="lisp">
+<pre class="lisp">(letrec
+    ((fact
+      (lambda (n)
+        (if (= n 1)
+            1
+            (* n (fact (- n 1)))))))
+  (fact 10))
+</pre></div>
+
+<ol type="a" start="1">
+<li> Implement <code>letrec</code> as a derived expression, by transforming a
+<code>letrec</code> expression into a <code>let</code> expression as shown in the text
+above or in <a href="#Exercise-4_002e18">Exercise 4.18</a>.  That is, the <code>letrec</code> variables should
+be created with a <code>let</code> and then be assigned their values with
+<code>set!</code>.
+
+</li><li> Louis Reasoner is confused by all this fuss about internal definitions.  The
+way he sees it, if you don&rsquo;t like to use <code>define</code> inside a procedure, you
+can just use <code>let</code>.  Illustrate what is loose about his reasoning by
+drawing an environment diagram that shows the environment in which the
+<code>⟨</code><var>rest of body of <code>f</code></var><code>⟩</code> is evaluated during evaluation of the
+expression <code>(f 5)</code>, with <code>f</code> defined as in this exercise.  Draw an
+environment diagram for the same evaluation, but with <code>let</code> in place of
+<code>letrec</code> in the definition of <code>f</code>.
+
+</li></ol>
+</blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e21"></span>Exercise 4.21:</strong> Amazingly, Louis&rsquo;s intuition in
+<a href="#Exercise-4_002e20">Exercise 4.20</a> is correct.  It is indeed possible to specify recursive
+procedures without using <code>letrec</code> (or even <code>define</code>), although the
+method for accomplishing this is much more subtle than Louis imagined.  The
+following expression computes 10 factorial by applying a recursive factorial
+procedure:<a class="footnote_link" id="DOCF231" href="#FOOT231"><sup>231</sup></a>
+</p>
+<div class="lisp">
+<pre class="lisp">((lambda (n)
+   ((lambda (fact) (fact fact n))
+    (lambda (ft k)
+      (if (= k 1)
+          1
+          (* k (ft ft (- k 1)))))))
+ 10)
+</pre></div>
+
+<ol type="a" start="1">
+<li> Check (by evaluating the expression) that this really does compute factorials.
+Devise an analogous expression for computing Fibonacci numbers.
+
+</li><li> Consider the following procedure, which includes mutually recursive internal
+definitions:
+
+<div class="lisp">
+<pre class="lisp">(define (f x)
+  (define (even? n)
+    (if (= n 0)
+        true
+        (odd? (- n 1))))
+  (define (odd? n)
+    (if (= n 0)
+        false
+        (even? (- n 1))))
+  (even? x))
+</pre></div>
+
+<p>Fill in the missing expressions to complete an alternative definition of
+<code>f</code>, which uses neither internal definitions nor <code>letrec</code>:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (f x)
+  ((lambda (even? odd?)
+     (even? even? odd? x))
+   (lambda (ev? od? n)
+     (if (= n 0) 
+         true 
+         (od? ⟨??⟩ ⟨??⟩ ⟨??⟩)))
+   (lambda (ev? od? n)
+     (if (= n 0) 
+         false 
+         (ev? ⟨??⟩ ⟨??⟩ ⟨??⟩)))))
+</pre></div>
+</li></ol>
+</blockquote>
+
+<hr>
+<span id="g_t4_002e1_002e7"></span><span id="Separating-Syntactic-Analysis-from-Execution"></span><h4 class="subsection"><span class="secnum">4.1.7</span><span class="sectitle">Separating Syntactic Analysis from Execution</span></h4>
+
+<p>The evaluator implemented above is simple, but it is very inefficient, because
+the syntactic analysis of expressions is interleaved with their execution.
+Thus if a program is executed many times, its syntax is analyzed many times.
+Consider, for example, evaluating <code>(factorial 4)</code> using the following
+definition of <code>factorial</code>:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (factorial n)
+  (if (= n 1)
+      1
+      (* (factorial (- n 1)) n)))
+</pre></div>
+
+<p>Each time <code>factorial</code> is called, the evaluator must determine that the
+body is an <code>if</code> expression and extract the predicate.  Only then can it
+evaluate the predicate and dispatch on its value.  Each time it evaluates the
+expression <code>(* (factorial (- n 1)) n)</code>, or the subexpressions
+<code>(factorial (- n 1))</code> and <code>(- n 1)</code>, the evaluator must perform the
+case analysis in <code>eval</code> to determine that the expression is an
+application, and must extract its operator and operands.  This analysis is
+expensive.  Performing it repeatedly is wasteful.
+</p>
+<p>We can transform the evaluator to be significantly more efficient by arranging
+things so that syntactic analysis is performed only once.<a class="footnote_link" id="DOCF232" href="#FOOT232"><sup>232</sup></a> We split <code>eval</code>, which takes an expression and an
+environment, into two parts.  The procedure <code>analyze</code> takes only the
+expression.  It performs the syntactic analysis and returns a new procedure,
+the <span id="index-execution-procedure"></span>
+<em>execution procedure</em>, that encapsulates the work to be done in
+executing the analyzed expression.  The execution procedure takes an
+environment as its argument and completes the evaluation.  This saves work
+because <code>analyze</code> will be called only once on an expression, while the
+execution procedure may be called many times.
+</p>
+<p>With the separation into analysis and execution, <code>eval</code> now becomes
+</p>
+<div class="lisp">
+<pre class="lisp">(define (eval exp env) ((analyze exp) env))
+</pre></div>
+
+<p>The result of calling <code>analyze</code> is the execution procedure to be applied
+to the environment.  The <code>analyze</code> procedure is the same case analysis as
+performed by the original <code>eval</code> of <a href="#g_t4_002e1_002e1">4.1.1</a>, except that the
+procedures to which we dispatch perform only analysis, not full evaluation:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (analyze exp)
+  (cond ((self-evaluating? exp)
+         (analyze-self-evaluating exp))
+        ((quoted? exp) 
+         (analyze-quoted exp))
+        ((variable? exp) 
+         (analyze-variable exp))
+        ((assignment? exp) 
+         (analyze-assignment exp))
+        ((definition? exp) 
+         (analyze-definition exp))
+        ((if? exp) 
+         (analyze-if exp))
+        ((lambda? exp) 
+         (analyze-lambda exp))
+        ((begin? exp) 
+         (analyze-sequence 
+          (begin-actions exp)))
+        ((cond? exp) 
+         (analyze (cond-&gt;if exp)))
+        ((application? exp) 
+         (analyze-application exp))
+        (else
+         (error &quot;Unknown expression 
+                 type: ANALYZE&quot; 
+                exp))))
+</pre></div>
+
+<p>Here is the simplest syntactic analysis procedure, which handles
+self-evaluating expressions.  It returns an execution procedure that ignores
+its environment argument and just returns the expression:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (analyze-self-evaluating exp)
+  (lambda (env) exp))
+</pre></div>
+
+<p>For a quoted expression, we can gain a little efficiency by extracting the text
+of the quotation only once, in the analysis phase, rather than in the execution
+phase.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (analyze-quoted exp)
+  (let ((qval (text-of-quotation exp)))
+    (lambda (env) qval)))
+</pre></div>
+
+<p>Looking up a variable value must still be done in the execution phase, since
+this depends upon knowing the environment.<a class="footnote_link" id="DOCF233" href="#FOOT233"><sup>233</sup></a>
+</p>
+<div class="lisp">
+<pre class="lisp">(define (analyze-variable exp)
+  (lambda (env) 
+    (lookup-variable-value exp env)))
+</pre></div>
+
+<p><code>Analyze-assignment</code> also must defer actually setting the variable until
+the execution, when the environment has been supplied.  However, the fact that
+the <code>assignment-value</code> expression can be analyzed (recursively) during
+analysis is a major gain in efficiency, because the <code>assignment-value</code>
+expression will now be analyzed only once.  The same holds true for
+definitions.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (analyze-assignment exp)
+  (let ((var (assignment-variable exp))
+        (vproc (analyze 
+                (assignment-value exp))))
+    (lambda (env)
+      (set-variable-value! 
+       var (vproc env) env)
+      'ok)))
+
+(define (analyze-definition exp)
+  (let ((var (definition-variable exp))
+        (vproc (analyze 
+                (definition-value exp))))
+    (lambda (env)
+      (define-variable! var (vproc env) env)
+      'ok)))
+</pre></div>
+
+<p>For <code>if</code> expressions, we extract and analyze the predicate, consequent,
+and alternative at analysis time.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (analyze-if exp)
+  (let ((pproc (analyze (if-predicate exp)))
+        (cproc (analyze (if-consequent exp)))
+        (aproc (analyze (if-alternative exp))))
+    (lambda (env)
+      (if (true? (pproc env))
+          (cproc env)
+          (aproc env)))))
+</pre></div>
+
+<p>Analyzing a <code>lambda</code> expression also achieves a major gain in efficiency:
+We analyze the <code>lambda</code> body only once, even though procedures resulting
+from evaluation of the <code>lambda</code> may be applied many times.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (analyze-lambda exp)
+  (let ((vars (lambda-parameters exp))
+        (bproc (analyze-sequence 
+                (lambda-body exp))))
+    (lambda (env) 
+      (make-procedure vars bproc env))))
+</pre></div>
+
+<p>Analysis of a sequence of expressions (as in a <code>begin</code> or the body of a
+<code>lambda</code> expression) is more involved.<a class="footnote_link" id="DOCF234" href="#FOOT234"><sup>234</sup></a> Each expression in the
+sequence is analyzed, yielding an execution procedure.  These execution
+procedures are combined to produce an execution procedure that takes an
+environment as argument and sequentially calls each individual execution
+procedure with the environment as argument.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (analyze-sequence exps)
+  (define (sequentially proc1 proc2)
+    (lambda (env) (proc1 env) (proc2 env)))
+  (define (loop first-proc rest-procs)
+    (if (null? rest-procs)
+        first-proc
+        (loop (sequentially first-proc 
+                            (car rest-procs))
+              (cdr rest-procs))))
+  (let ((procs (map analyze exps)))
+    (if (null? procs)
+        (error &quot;Empty sequence: ANALYZE&quot;))
+    (loop (car procs) (cdr procs))))
+</pre></div>
+
+<p>To analyze an application, we analyze the operator and operands and construct
+an execution procedure that calls the operator execution procedure (to obtain
+the actual procedure to be applied) and the operand execution procedures (to
+obtain the actual arguments).  We then pass these to
+<code>execute-application</code>, which is the analog of <code>apply</code> in 
+<a href="#g_t4_002e1_002e1">4.1.1</a>.  <code>Execute-application</code> differs from <code>apply</code> in that the
+procedure body for a compound procedure has already been analyzed, so there is
+no need to do further analysis.  Instead, we just call the execution procedure
+for the body on the extended environment.
+</p>
+<div class="lisp">
+<pre class="lisp">(define (analyze-application exp)
+  (let ((fproc (analyze (operator exp)))
+        (aprocs (map analyze (operands exp))))
+    (lambda (env)
+      (execute-application 
+       (fproc env)
+       (map (lambda (aproc) (aproc env))
+            aprocs)))))
+
+(define (execute-application proc args)
+  (cond ((primitive-procedure? proc)
+         (apply-primitive-procedure proc args))
+        ((compound-procedure? proc)
+         ((procedure-body proc)
+          (extend-environment 
+           (procedure-parameters proc)
+           args
+           (procedure-environment proc))))
+        (else (error &quot;Unknown procedure type: 
+                      EXECUTE-APPLICATION&quot;
+                     proc))))
+</pre></div>
+
+<p>Our new evaluator uses the same data structures, syntax procedures, and
+run-time support procedures as in <a href="#g_t4_002e1_002e2">4.1.2</a>, <a href="#g_t4_002e1_002e3">4.1.3</a>, and
+<a href="#g_t4_002e1_002e4">4.1.4</a>.
+</p>
+<blockquote>
+<p><strong><span id="Exercise-4_002e22"></span>Exercise 4.22:</strong> Extend the evaluator in this
+section to support the special form <code>let</code>.  (See <a href="#Exercise-4_002e6">Exercise 4.6</a>.)
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e23"></span>Exercise 4.23:</strong> Alyssa P. Hacker doesn&rsquo;t
+understand why <code>analyze-sequence</code> needs to be so complicated.  All the
+other analysis procedures are straightforward transformations of the
+corresponding evaluation procedures (or <code>eval</code> clauses) in 
+<a href="#g_t4_002e1_002e1">4.1.1</a>.  She expected <code>analyze-sequence</code> to look like this:
+</p>
+<div class="lisp">
+<pre class="lisp">(define (analyze-sequence exps)
+  (define (execute-sequence procs env)
+    (cond ((null? (cdr procs)) 
+           ((car procs) env))
+          (else ((car procs) env)
+                (execute-sequence 
+                 (cdr procs) env))))
+  (let ((procs (map analyze exps)))
+    (if (null? procs)
+        (error &quot;Empty sequence: 
+                ANALYZE&quot;))
+    (lambda (env) 
+      (execute-sequence procs env))))
+</pre></div>
+
+<p>Eva Lu Ator explains to Alyssa that the version in the text does more of the
+work of evaluating a sequence at analysis time.  Alyssa&rsquo;s sequence-execution
+procedure, rather than having the calls to the individual execution procedures
+built in, loops through the procedures in order to call them: In effect,
+although the individual expressions in the sequence have been analyzed, the
+sequence itself has not been.
+</p>
+<p>Compare the two versions of <code>analyze-sequence</code>.  For example, consider the
+common case (typical of procedure bodies) where the sequence has just one
+expression.  What work will the execution procedure produced by Alyssa&rsquo;s
+program do?  What about the execution procedure produced by the program in the
+text above?  How do the two versions compare for a sequence with two
+expressions?
+</p></blockquote>
+
+<blockquote>
+<p><strong><span id="Exercise-4_002e24"></span>Exercise 4.24:</strong> Design and carry out some
+experiments to compare the speed of the original metacircular evaluator with
+the version in this section.  Use your results to estimate the fraction of time
+that is spent in analysis versus execution for various procedures.
+</p></blockquote>
+
+<div class="footnote">
+<hr>
+<h4 class="footnotes-heading">Footnotes</h4>
+
+<div id="FOOT207"><p><a class="footnote_backlink" href="#DOCF207"><sup>207</sup></a>
+Even so, there will remain
+important aspects of the evaluation process that are not elucidated by our
+evaluator.  The most important of these are the detailed mechanisms by which
+procedures call other procedures and return values to their callers.  We will
+address these issues in <a href="Chapter-5.html">Chapter 5</a>, where we take a closer look at the
+evaluation process by implementing the evaluator as a simple register machine.</p>
+</div>
+<div id="FOOT208"><p><a class="footnote_backlink" href="#DOCF208"><sup>208</sup></a>
+If we grant ourselves the
+ability to apply primitives, then what remains for us to implement in the
+evaluator?  The job of the evaluator is not to specify the primitives of the
+language, but rather to provide the connective tissue&mdash;the means of
+combination and the means of abstraction&mdash;that binds a collection of
+primitives to form a language. Specifically:
+</p>
+<ul>
+<li> The evaluator enables us to deal with nested expressions.  For example,
+although simply applying primitives would suffice for evaluating the expression
+<code>(+ 1 6)</code>, it is not adequate for handling <code>(+ 1 (* 2 3))</code>.  As far
+as the primitive procedure <code>+</code> is concerned, its arguments must be
+numbers, and it would choke if we passed it the expression <code>(* 2 3)</code> as an
+argument.  One important role of the evaluator is to choreograph procedure
+composition so that <code>(* 2 3)</code> is reduced to 6 before being passed as an
+argument to <code>+</code>.
+
+</li><li> The evaluator allows us to use variables.  For example, the primitive procedure
+for addition has no way to deal with expressions such as <code>(+ x 1)</code>.  We
+need an evaluator to keep track of variables and obtain their values before
+invoking the primitive procedures.
+
+</li><li> The evaluator allows us to define compound procedures.  This involves keeping
+track of procedure definitions, knowing how to use these definitions in
+evaluating expressions, and providing a mechanism that enables procedures to
+accept arguments.
+
+</li><li> The evaluator provides the special forms, which must be evaluated differently
+from procedure calls.
+
+</li></ul>
+</div>
+<div id="FOOT209"><p><a class="footnote_backlink" href="#DOCF209"><sup>209</sup></a>
+We could have simplified the <code>application?</code>
+clause in <code>eval</code> by using <code>map</code> (and stipulating that <code>operands</code>
+returns a list) rather than writing an explicit <code>list-of-values</code>
+procedure.  We chose not to use <code>map</code> here to emphasize the fact that the
+evaluator can be implemented without any use of higher-order procedures (and
+thus could be written in a language that doesn&rsquo;t have higher-order procedures),
+even though the language that it supports will include higher-order
+procedures.</p>
+</div>
+<div id="FOOT210"><p><a class="footnote_backlink" href="#DOCF210"><sup>210</sup></a>
+In this case, the language
+being implemented and the implementation language are the same.  Contemplation
+of the meaning of <code>true?</code> here yields expansion of consciousness without
+the abuse of substance.</p>
+</div>
+<div id="FOOT211"><p><a class="footnote_backlink" href="#DOCF211"><sup>211</sup></a>
+This
+implementation of <code>define</code> ignores a subtle issue in the handling of
+internal definitions, although it works correctly in most cases.  We will see
+what the problem is and how to solve it in <a href="#g_t4_002e1_002e6">4.1.6</a>.</p>
+</div>
+<div id="FOOT212"><p><a class="footnote_backlink" href="#DOCF212"><sup>212</sup></a>
+As we said when we introduced
+<code>define</code> and <code>set!</code>, these values are implementation-dependent in
+Scheme&mdash;that is, the implementor can choose what value to return.</p>
+</div>
+<div id="FOOT213"><p><a class="footnote_backlink" href="#DOCF213"><sup>213</sup></a>
+As
+mentioned in <a href="2_002e3.html#g_t2_002e3_002e1">2.3.1</a>, the evaluator sees a quoted expression as a
+list beginning with <code>quote</code>, even if the expression is typed with the
+quotation mark.  For example, the expression <code>'a</code> would be seen by the
+evaluator as <code>(quote a)</code>.  See <a href="2_002e3.html#Exercise-2_002e55">Exercise 2.55</a>.</p>
+</div>
+<div id="FOOT214"><p><a class="footnote_backlink" href="#DOCF214"><sup>214</sup></a>
+The value of an <code>if</code> expression
+when the predicate is false and there is no alternative is unspecified in
+Scheme; we have chosen here to make it false.  We will support the use of the
+variables <code>true</code> and <code>false</code> in expressions to be evaluated by
+binding them in the global environment.  See <a href="#g_t4_002e1_002e4">4.1.4</a>.</p>
+</div>
+<div id="FOOT215"><p><a class="footnote_backlink" href="#DOCF215"><sup>215</sup></a>
+These selectors for a list of expressions&mdash;and the
+corresponding ones for a list of operands&mdash;are not intended as a data
+abstraction.  They are introduced as mnemonic names for the basic list
+operations in order to make it easier to understand the explicit-control
+evaluator in <a href="5_002e4.html#g_t5_002e4">5.4</a>.</p>
+</div>
+<div id="FOOT216"><p><a class="footnote_backlink" href="#DOCF216"><sup>216</sup></a>
+The
+value of a <code>cond</code> expression when all the predicates are false and there
+is no <code>else</code> clause is unspecified in Scheme; we have chosen here to make
+it false.</p>
+</div>
+<div id="FOOT217"><p><a class="footnote_backlink" href="#DOCF217"><sup>217</sup></a>
+Practical Lisp systems provide a mechanism that allows a user
+to add new derived expressions and specify their implementation as syntactic
+transformations without modifying the evaluator.  Such a user-defined
+transformation is called a <span id="index-macro"></span>
+<em>macro</em>.  Although it is easy to add an
+elementary mechanism for defining macros, the resulting language has subtle
+name-conflict problems.  There has been much research on mechanisms for macro
+definition that do not cause these difficulties.  See, for example, <a href="References.html#Kohlbecker-1986">Kohlbecker 1986</a>, 
+<a href="References.html#Clinger-and-Rees-1991">Clinger and Rees 1991</a>, and <a href="References.html#Hanson-1991">Hanson 1991</a>.</p>
+</div>
+<div id="FOOT218"><p><a class="footnote_backlink" href="#DOCF218"><sup>218</sup></a>
+Frames are not really a data abstraction in the following
+code: <code>Set-variable-value!</code> and <code>define-variable!</code> use
+<code>set-car!</code>  to directly modify the values in a frame.  The purpose of the
+frame procedures is to make the environment-manipulation procedures easy to
+read.</p>
+</div>
+<div id="FOOT219"><p><a class="footnote_backlink" href="#DOCF219"><sup>219</sup></a>
+The drawback of this representation (as well as the
+variant in <a href="#Exercise-4_002e11">Exercise 4.11</a>) is that the evaluator may have to search
+through many frames in order to find the binding for a given variable.  (Such
+an approach is referred to as <span id="index-deep-binding"></span>
+<em>deep binding</em>.)  One way to avoid this
+inefficiency is to make use of a strategy called <span id="index-lexical-addressing"></span>
+<em>lexical addressing</em>,
+which will be discussed in <a href="5_002e5.html#g_t5_002e5_002e6">5.5.6</a>.</p>
+</div>
+<div id="FOOT220"><p><a class="footnote_backlink" href="#DOCF220"><sup>220</sup></a>
+Any procedure defined in the underlying Lisp
+can be used as a primitive for the metacircular evaluator.  The name of a
+primitive installed in the evaluator need not be the same as the name of its
+implementation in the underlying Lisp; the names are the same here because the
+metacircular evaluator implements Scheme itself.  Thus, for example, we could
+put <code>(list 'first car)</code> or <code>(list 'square (lambda (x) (* x x)))</code> in
+the list of <code>primitive-procedures</code>.</p>
+</div>
+<div id="FOOT221"><p><a class="footnote_backlink" href="#DOCF221"><sup>221</sup></a>
+<code>Apply-in-underlying-scheme</code> is the <code>apply</code>
+procedure we have used in earlier chapters.  The metacircular evaluator&rsquo;s
+<code>apply</code> procedure (<a href="#g_t4_002e1_002e1">4.1.1</a>) models the working of this
+primitive.  Having two different things called <code>apply</code> leads to a
+technical problem in running the metacircular evaluator, because defining the
+metacircular evaluator&rsquo;s <code>apply</code> will mask the definition of the
+primitive.  One way around this is to rename the metacircular <code>apply</code> to
+avoid conflict with the name of the primitive procedure.  We have assumed
+instead that we have saved a reference to the underlying <code>apply</code> by doing
+</p>
+<div class="lisp">
+<pre class="lisp">(define apply-in-underlying-scheme apply)
+</pre></div>
+
+<p>before defining the metacircular <code>apply</code>.  This allows us to access the
+original version of <code>apply</code> under a different name.</p>
+</div>
+<div id="FOOT222"><p><a class="footnote_backlink" href="#DOCF222"><sup>222</sup></a>
+The
+primitive procedure <code>read</code> waits for input from the user, and returns the
+next complete expression that is typed.  For example, if the user types
+<code>(+ 23 x)</code>, <code>read</code> returns a three-element list containing the symbol
+<code>+</code>, the number 23, and the symbol <code>x</code>.  If the user types <code>'x</code>,
+<code>read</code> returns a two-element list containing the symbol <code>quote</code> and
+the symbol <code>x</code>.</p>
+</div>
+<div id="FOOT223"><p><a class="footnote_backlink" href="#DOCF223"><sup>223</sup></a>
+The fact that the machines are described in Lisp is
+inessential.  If we give our evaluator a Lisp program that behaves as an
+evaluator for some other language, say C, the Lisp evaluator will emulate the C
+evaluator, which in turn can emulate any machine described as a C program.
+Similarly, writing a Lisp evaluator in C produces a C program that can execute
+any Lisp program.  The deep idea here is that any evaluator can emulate any
+other.  Thus, the notion of &ldquo;what can in principle be computed&rdquo; (ignoring
+practicalities of time and memory required) is independent of the language or
+the computer, and instead reflects an underlying notion of
+<span id="index-computability"></span>
+<em>computability</em>.  This was first demonstrated in a clear way by Alan
+M. Turing (1912-1954), whose 1936 paper laid the foundations for theoretical
+computer science.  In the paper, Turing presented a simple computational
+model&mdash;now known as a <span id="index-Turing-machine"></span>
+<em>Turing machine</em>&mdash;and argued that any
+&ldquo;effective process&rdquo; can be formulated as a program for such a machine.  (This
+argument is known as the <span id="index-Church_002dTuring-thesis"></span>
+<em>Church-Turing thesis</em>.)  Turing then
+implemented a universal machine, i.e., a Turing machine that behaves as an
+evaluator for Turing-machine programs.  He used this framework to demonstrate
+that there are well-posed problems that cannot be computed by Turing machines
+(see <a href="#Exercise-4_002e15">Exercise 4.15</a>), and so by implication cannot be formulated as
+&ldquo;effective processes.&rdquo;  Turing went on to make fundamental contributions to
+practical computer science as well.  For example, he invented the idea of
+structuring programs using general-purpose subroutines.  See <a href="References.html#Hodges-1983">Hodges 1983</a> for a
+biography of Turing.</p>
+</div>
+<div id="FOOT224"><p><a class="footnote_backlink" href="#DOCF224"><sup>224</sup></a>
+Some people find it counterintuitive that an evaluator, which
+is implemented by a relatively simple procedure, can emulate programs that are
+more complex than the evaluator itself.  The existence of a universal evaluator
+machine is a deep and wonderful property of computation.  <span id="index-Recursion-theory"></span>
+<em>Recursion theory</em>, 
+a branch of mathematical logic, is concerned with logical limits of
+computation.  Douglas Hofstadter&rsquo;s beautiful book <cite>G&ouml;del, Escher, Bach</cite>
+explores some of these ideas (<a href="References.html#Hofstadter-1979">Hofstadter 1979</a>).</p>
+</div>
+<div id="FOOT225"><p><a class="footnote_backlink" href="#DOCF225"><sup>225</sup></a>
+Warning: This <code>eval</code> primitive is not identical to
+the <code>eval</code> procedure we implemented in <a href="#g_t4_002e1_002e1">4.1.1</a>, because it
+uses <em>actual</em> Scheme environments rather than the sample environment
+structures we built in <a href="#g_t4_002e1_002e3">4.1.3</a>.  These actual environments cannot
+be manipulated by the user as ordinary lists; they must be accessed via
+<code>eval</code> or other special operations.  Similarly, the <code>apply</code> primitive
+we saw earlier is not identical to the metacircular <code>apply</code>, because it
+uses actual Scheme procedures rather than the procedure objects we constructed
+in <a href="#g_t4_002e1_002e3">4.1.3</a> and <a href="#g_t4_002e1_002e4">4.1.4</a>.</p>
+</div>
+<div id="FOOT226"><p><a class="footnote_backlink" href="#DOCF226"><sup>226</sup></a>
+The <abbr>MIT</abbr> implementation of Scheme
+includes <code>eval</code>, as well as a symbol <code>user-initial-environment</code> that
+is bound to the initial environment in which the user&rsquo;s input expressions are
+evaluated.</p>
+</div>
+<div id="FOOT227"><p><a class="footnote_backlink" href="#DOCF227"><sup>227</sup></a>
+Although we stipulated that <code>halts?</code>
+is given a procedure object, notice that this reasoning still applies even if
+<code>halts?</code> can gain access to the procedure&rsquo;s text and its environment.
+This is Turing&rsquo;s celebrated <span id="index-Halting-Theorem"></span>
+<em>Halting Theorem</em>, which gave the first
+clear example of a <span id="index-non_002dcomputable"></span>
+<em>non-computable</em> problem, i.e., a well-posed task
+that cannot be carried out as a computational procedure.</p>
+</div>
+<div id="FOOT228"><p><a class="footnote_backlink" href="#DOCF228"><sup>228</sup></a>
+Wanting programs
+to not depend on this evaluation mechanism is the reason for the &ldquo;management
+is not responsible&rdquo; remark in <a href="1_002e1.html#Footnote-28">Footnote 28</a> of <a href="Chapter-1.html">Chapter 1</a>.  By
+insisting that internal definitions come first and do not use each other while
+the definitions are being evaluated, the <abbr>IEEE</abbr> standard for Scheme
+leaves implementors some choice in the mechanism used to evaluate these
+definitions.  The choice of one evaluation rule rather than another here may
+seem like a small issue, affecting only the interpretation of &ldquo;badly formed&rdquo;
+programs.  However, we will see in <a href="5_002e5.html#g_t5_002e5_002e6">5.5.6</a> that moving to a model
+of simultaneous scoping for internal definitions avoids some nasty difficulties
+that would otherwise arise in implementing a compiler.</p>
+</div>
+<div id="FOOT229"><p><a class="footnote_backlink" href="#DOCF229"><sup>229</sup></a>
+The <abbr>IEEE</abbr> standard for Scheme
+allows for different implementation strategies by specifying that it is up to
+the programmer to obey this restriction, not up to the implementation to
+enforce it.  Some Scheme implementations, including <abbr>MIT</abbr> Scheme, use
+the transformation shown above.  Thus, some programs that don&rsquo;t obey this
+restriction will in fact run in such implementations.</p>
+</div>
+<div id="FOOT230"><p><a class="footnote_backlink" href="#DOCF230"><sup>230</sup></a>
+The <abbr>MIT</abbr>
+implementors of Scheme support Alyssa on the following grounds: Eva is in
+principle correct&mdash;the definitions should be regarded as simultaneous.  But
+it seems difficult to implement a general, efficient mechanism that does what
+Eva requires.  In the absence of such a mechanism, it is better to generate an
+error in the difficult cases of simultaneous definitions (Alyssa&rsquo;s notion) than
+to produce an incorrect answer (as Ben would have it).</p>
+</div>
+<div id="FOOT231"><p><a class="footnote_backlink" href="#DOCF231"><sup>231</sup></a>
+This example illustrates a programming trick for
+formulating recursive procedures without using <code>define</code>.  The most general
+trick of this sort is the \( Y \) <span id="index-operator-1"></span>
+<em>operator</em>, which can be used to give a
+&ldquo;pure λ-calculus&rdquo; implementation of recursion.  (See <a href="References.html#Stoy-1977">Stoy 1977</a> for
+details on the λ-calculus, and <a href="References.html#Gabriel-1988">Gabriel 1988</a> for an exposition of the
+\( Y \) operator in Scheme.)</p>
+</div>
+<div id="FOOT232"><p><a class="footnote_backlink" href="#DOCF232"><sup>232</sup></a>
+This
+technique is an integral part of the compilation process, which we shall
+discuss in <a href="Chapter-5.html">Chapter 5</a>.  Jonathan Rees wrote a Scheme interpreter like this
+in about 1982 for the T project (<a href="References.html#Rees-and-Adams-1982">Rees and Adams 1982</a>).  Marc <a href="References.html#Feeley-_00281986_0029">Feeley (1986)</a> (see
+also <a href="References.html#Feeley-and-Lapalme-1987">Feeley and Lapalme 1987</a>) independently invented this technique in his
+master&rsquo;s thesis.</p>
+</div>
+<div id="FOOT233"><p><a class="footnote_backlink" href="#DOCF233"><sup>233</sup></a>
+There is, however, an
+important part of the variable search that <em>can</em> be done as part of the
+syntactic analysis.  As we will show in <a href="5_002e5.html#g_t5_002e5_002e6">5.5.6</a>, one can determine
+the position in the environment structure where the value of the variable will
+be found, thus obviating the need to scan the environment for the entry that
+matches the variable.</p>
+</div>
+<div id="FOOT234"><p><a class="footnote_backlink" href="#DOCF234"><sup>234</sup></a>
+See <a href="#Exercise-4_002e23">Exercise 4.23</a>
+for some insight into the processing of sequences.</p>
+</div>
+</div>
+<hr>
+<div class="header">
+<p>
+Next: <a href="4_002e2.html#g_t4_002e2" accesskey="n" rel="next">4.2</a>, Previous: <a href="Chapter-4.html" accesskey="p" rel="prev">Chapter 4</a>, Up: <a href="#g_t4_002e1" accesskey="u" rel="up">4.1</a> &nbsp; [<a href="index.html#SEC_Contents" title="Table of contents" rel="contents">Contents</a>][<a href="Term-Index.html" title="Index" rel="index">Index</a>]</p>
+</div>
+
+
+</section><span class="bottom jump" title="Jump to bottom"><a href="#pagebottom" accesskey="b">&#8675;</a></span><a id="pagebottom"></a>
+</body>
+</html>
